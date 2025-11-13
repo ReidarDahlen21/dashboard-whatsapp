@@ -1,0 +1,17 @@
+{
+  "name": "dashboard-whatsapp",
+  "version": "1.0.0",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "ejs": "^3.1.10",
+    "express": "^4.19.2",
+    "express-ejs-layouts": "^2.5.1",
+    "morgan": "^1.10.0",
+    "mssql": "^12.1.0"
+  }
+}

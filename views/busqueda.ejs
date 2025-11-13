@@ -1,0 +1,93 @@
+<h1 class="h3">Búsqueda</h1>
+
+<br>
+
+<div class="input-group mb-3">
+  <input id="q" type="text" class="form-control" placeholder="Nro Whatsapp/Incident Number/CaseID">
+  <button id="btnBuscar" class="btn btn-primary" type="button">Buscar</button>
+</div>
+
+<div id="resultado" class="d-flex flex-column gap-2"></div>
+
+<script>
+(function () {
+  const $q = document.getElementById('q');
+  const $btn = document.getElementById('btnBuscar');
+  const $out = document.getElementById('resultado');
+
+  function fmtDate(d) {
+    if (!d) return "";
+    const dt = new Date(d);
+    const yyyy = dt.getFullYear();
+    const mm = String(dt.getMonth()+1).padStart(2,'0');
+    const dd = String(dt.getDate()).padStart(2,'0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  function fmtTime(d) {
+    if (!d) return "";
+    const dt = new Date(d);
+    const hh = String(dt.getHours()).padStart(2,'0');
+    const mi = String(dt.getMinutes()).padStart(2,'0');
+    return `${hh}:${mi}`;
+  }
+
+  function renderMessages(term, rows) {
+    if (!rows.length) {
+      $out.innerHTML = `
+        <div class="alert alert-warning">No se encontraron resultados para <strong>${term}</strong>.</div>
+      `;
+      return;
+    }
+
+    $out.innerHTML = rows.map(r => {
+      const by = r.matchColumn || 'coincidencia';
+      const fechaEnv = fmtDate(r.fecha_envio);
+      const horaEnv  = fmtTime(r.fecha_envio);
+      const fechaRes = fmtDate(r.fecha_respuesta);
+      const horaRes  = fmtTime(r.fecha_respuesta);
+
+      // Oraciones
+      const intro = `El <strong>${by}</strong> <strong>${term}</strong> se intentó contactar el día <strong>${fechaEnv}</strong> a las <strong>${horaEnv}</strong>.`;
+
+      const cuerpo = (!r.fecha_respuesta)
+        ? `Dicho mensaje <strong>no fue respondido</strong> por el cliente.`
+        : `El cliente respondió <strong>${(r.resultado_cliente || '').trim()}</strong> el día <strong>${fechaRes}</strong> a las <strong>${horaRes}</strong>.`;
+
+      return `
+        <div class="border rounded-3 p-3">
+          <div class="mb-1">${intro}</div>
+          <div class="text-body">${cuerpo}</div>
+          <div class="text-muted small mt-2">
+            intento #${r.intentoNumero ?? ''} • estado: ${(r.estado || '').trim()} • envío: ${(r.resultado_envio || '').trim()}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async function buscar() {
+    const term = $q.value.trim();
+    if (!term) {
+      $out.innerHTML = `<div class="alert alert-info">Ingresá un número de WhatsApp, Incident o CaseID.</div>`;
+      return;
+    }
+    $out.innerHTML = `<div class="text-body-secondary">Buscando…</div>`;
+    try {
+      const res = await fetch(`/api/busqueda?term=${encodeURIComponent(term)}`);
+      const { ok, data, error } = await res.json();
+      if (!ok) throw new Error(error || 'Error');
+      renderMessages(term, data || []);
+    } catch (err) {
+      console.error(err);
+      $out.innerHTML = `<div class="alert alert-danger">Error al buscar.</div>`;
+    }
+  }
+
+  $btn.addEventListener('click', buscar);
+  $q.addEventListener('keydown', (e) => { if (e.key === 'Enter') buscar(); });
+
+  // foco inicial
+  $q.focus();
+})();
+</script>
+

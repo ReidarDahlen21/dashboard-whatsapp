@@ -1,0 +1,175 @@
+<h1 class="h3 my-3">
+  Cierres
+  <small class="text-body-secondary ms-2">Con motivo CIERRE TT - CLIENTE CONFIRMA OK WHATSAPP</small>
+</h1>
+
+<div class="row g-4">
+  <!-- Izquierda: tabla -->
+  <div class="col-12 col-lg-6">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h3 class="h6 mb-0">Últimos <span id="lbl-dias-cierres">15</span> días</h3>
+      <div class="d-flex align-items-center gap-2">
+        <label class="small text-muted">Días</label>
+        <select id="sel-dias" class="form-select form-select-sm" style="width:auto">
+          <option>7</option><option selected>15</option><option>30</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="table-responsive border rounded-4">
+      <table class="table table-hover align-middle mb-0" id="tabla-cierres">
+        <thead class="table-light">
+          <tr>
+            <th>Fecha</th>
+            <th class="text-end">Total de casos</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td colspan="2" class="text-center py-4 text-body-secondary">Cargando…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Derecha: gráfico -->
+  <div class="col-12 col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h3 class="h6 mb-0">Cierres por día</h3>
+        </div>
+        <canvas id="cierresChart" height="160"></canvas>
+        <div class="small text-body-secondary mt-2">
+          Barras: cierres/día. Línea y área: promedio histórico diario.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const $tbody = document.querySelector('#tabla-cierres tbody');
+  const $lblDias = document.getElementById('lbl-dias-cierres');
+  const $selDias = document.getElementById('sel-dias');
+
+  let DIAS = parseInt($selDias.value, 10) || 15;
+
+  // Chart.js
+  const ctx = document.getElementById('cierresChart')?.getContext('2d');
+  let chart = null;
+
+  function fmt(n){ return Number(n || 0).toLocaleString('es-AR'); }
+  function fmtDate(d){ return (d || '').toString().slice(0,10); }
+
+  function buildChart(rows, avg) {
+    if (!ctx) return;
+
+    // ascendente para el gráfico
+    const dataAsc = [...rows].sort((a,b) => new Date(a.fecha) - new Date(b.fecha));
+    const labels = dataAsc.map(r => fmtDate(r.fecha));
+    const totals = dataAsc.map(r => Number(r.total || 0));
+
+    const avgArr = labels.map(_ => Number(avg || 0));
+
+    if (chart) chart.destroy();
+
+    chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          // área suave del promedio (gris)
+            {
+            type: 'line',
+            label: 'promedio (área)',
+            data: avgArr,
+            yAxisID: 'y',
+            borderWidth: 0,
+            pointRadius: 0,
+            fill: true,
+            backgroundColor: 'rgba(108,117,125,0.12)', // gris claro (secondary)
+            order: 0
+            },
+            // línea del promedio (gris marcado, punteada)
+            {
+            type: 'line',
+            label: 'promedio histórico',
+            data: avgArr,
+            yAxisID: 'y',
+            borderColor: 'rgba(108,117,125,0.9)',      // gris oscuro
+            backgroundColor: 'rgba(108,117,125,0.9)',
+            borderWidth: 2,
+            borderDash: [6,4],
+            pointRadius: 0,
+            tension: 0,
+            order: 1
+            },
+
+          // barras de cierres
+          {
+            type: 'bar',
+            label: 'cierres',
+            data: totals,
+            yAxisID: 'y',
+            backgroundColor: '#0d6efd',   // azul
+            borderColor: '#0d6efd',
+            borderWidth: 0,
+            order: 2
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'top' },
+          tooltip: { callbacks: {
+            label: (ctx) => {
+              const v = ctx.parsed.y;
+              return `${ctx.dataset.label}: ${v?.toLocaleString?.('es-AR')}`;
+            }
+          } }
+        },
+        scales: {
+          y: { beginAtZero: true, title: { display: true, text: 'Cantidad' } }
+        }
+      }
+    });
+  }
+
+  async function load() {
+    $lblDias.textContent = DIAS;
+    $tbody.innerHTML = '<tr><td colspan="2" class="text-center py-4 text-body-secondary">Cargando…</td></tr>';
+    try {
+      const res = await fetch(`/api/cierres?dias=${DIAS}`);
+      const { ok, data, avg, error } = await res.json();
+      if (!ok) throw new Error(error || 'Error');
+
+      if (!data?.length) {
+        $tbody.innerHTML = '<tr><td colspan="2" class="text-center py-4 text-body-secondary">Sin datos.</td></tr>';
+        buildChart([], avg);
+        return;
+      }
+
+      // tabla (orden DESC ya viene del SP)
+      $tbody.innerHTML = data.map(r => `
+        <tr>
+          <td>${fmtDate(r.fecha)}</td>
+          <td class="text-end">${fmt(r.total)}</td>
+        </tr>
+      `).join('');
+
+      buildChart(data, avg);
+    } catch (err) {
+      console.error(err);
+      $tbody.innerHTML = '<tr><td colspan="2" class="text-center py-4 text-danger">Error al cargar datos.</td></tr>';
+      buildChart([], 0);
+    }
+  }
+
+  $selDias.addEventListener('change', () => { DIAS = parseInt($selDias.value, 10) || 15; load(); });
+
+  load();
+})();
+</script>

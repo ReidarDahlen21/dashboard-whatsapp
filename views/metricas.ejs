@@ -1,0 +1,137 @@
+<h2 class="h5 my-3">Detalle Intradiario Últimos <span id="lbl-dias-det">10</span> días</h2>
+
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <div class="btn-group btn-group-sm" role="group" aria-label="Filtro motivo">
+    <button type="button" class="btn btn-outline-secondary active" data-motivo-det="total">Total</button>
+    <button type="button" class="btn btn-outline-secondary" data-motivo-det="_1p">_1p</button>
+    <button type="button" class="btn btn-outline-secondary" data-motivo-det="_2p">_2p</button>
+    <button type="button" class="btn btn-outline-secondary" data-motivo-det="_3p">_3p</button>
+  </div>
+
+  <div class="d-flex align-items-center gap-2">
+    <label class="small text-muted">Filas por página</label>
+    <select id="pageSize" class="form-select form-select-sm" style="width:auto">
+      <option>100</option><option selected>200</option><option>500</option><option>1000</option>
+    </select>
+  </div>
+</div>
+
+<div class="table-responsive border rounded-4">
+  <table class="table table-sm table-hover align-middle mb-0" id="tabla-detalle">
+    <thead class="table-light">
+      <tr>
+        <th>fcCarga</th>
+        <th>motivo</th>
+        <th class="text-end">enviados</th>
+        <th class="text-end">pendiente</th>
+        <th class="text-end">pend. Válido Envío</th>
+        <th class="text-end">RefUtil</th>
+        <th class="text-end">RefUtil Bloq</th>
+        <th class="text-end">Bloq En Curso</th>
+        <th class="text-end">Bloq Cita</th>
+        <th class="text-end">Bloq Rx</th>
+        <th class="text-end">Bloq Otros</th>
+        <th class="text-end">Bloq Cliente</th>
+        <th class="text-end">ok</th>
+        <th class="text-end">mal</th>
+        <th class="text-end">sinRespuesta</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td colspan="15" class="text-center py-4 text-body-secondary">Cargando…</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mt-2">
+  <div class="small text-muted">
+    Total: <span id="lbl-total">0</span> filas — Página <span id="lbl-page">1</span>
+  </div>
+  <div class="btn-group btn-group-sm">
+    <button class="btn btn-outline-secondary" id="btn-prev">&laquo; Anterior</button>
+    <button class="btn btn-outline-secondary" id="btn-next">Siguiente &raquo;</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  const DIAS = 10;
+  const lblDias = document.getElementById('lbl-dias-det');
+  const $tbody = document.querySelector('#tabla-detalle tbody');
+  const $motivoBtns = document.querySelectorAll('[data-motivo-det]');
+  const $pageSize = document.getElementById('pageSize');
+  const $lblTotal = document.getElementById('lbl-total');
+  const $lblPage = document.getElementById('lbl-page');
+  const $btnPrev = document.getElementById('btn-prev');
+  const $btnNext = document.getElementById('btn-next');
+
+  let motivo = 'total';
+  let page = 1;
+  let total = 0;
+
+  function setActive(btn) { $motivoBtns.forEach(b => b.classList.toggle('active', b === btn)); }
+  function fmt(n){ return Number(n ?? 0).toLocaleString('es-AR'); }
+  function fmtTs(ts){ return (ts ? new Date(ts).toISOString().slice(0,19).replace('T',' ') : ''); }
+
+  async function load() {
+    lblDias.textContent = DIAS;
+    const pageSize = parseInt($pageSize.value, 10) || 200;
+
+    $tbody.innerHTML = '<tr><td colspan="15" class="text-center py-4 text-body-secondary">Cargando…</td></tr>';
+    try {
+      const url = `/api/detalle?motivo=${encodeURIComponent(motivo)}&dias=${DIAS}&page=${page}&pageSize=${pageSize}`;
+      const { ok, data, total: tot, error } = await (await fetch(url)).json();
+      if (!ok) throw new Error(error || 'Error');
+
+      total = tot || 0;
+      $lblTotal.textContent = fmt(total);
+      $lblPage.textContent = page;
+
+      if (!data?.length) {
+        $tbody.innerHTML = '<tr><td colspan="15" class="text-center py-4 text-body-secondary">Sin datos.</td></tr>';
+        return;
+      }
+
+      $tbody.innerHTML = data.map(r => `
+        <tr>
+          <td>${fmtTs(r.fcCarga)}</td>
+          <td>${r.motivo || ''}</td>
+          <td class="text-end">${fmt(r.enviados)}</td>
+          <td class="text-end">${fmt(r.pendiente)}</td>
+          <td class="text-end">${fmt(r.cantPendienteTotalValidoEnvio)}</td>
+          <td class="text-end">${fmt(r.cantPendienteRefUtil)}</td>
+          <td class="text-end">${fmt(r.cantPendienteRefUtilBloqueante)}</td>
+          <td class="text-end">${fmt(r.cantPendienteBloqEnCurso)}</td>
+          <td class="text-end">${fmt(r.cantPendienteBloqCita)}</td>
+          <td class="text-end">${fmt(r.cantPendienteBloqRx)}</td>
+          <td class="text-end">${fmt(r.cantPendienteBloqOtros)}</td>
+          <td class="text-end">${fmt(r.cantPendienteBloqCliente)}</td>
+          <td class="text-end">${fmt(r.ok)}</td>
+          <td class="text-end">${fmt(r.mal)}</td>
+          <td class="text-end">${fmt(r.sinRespuesta)}</td>
+        </tr>
+      `).join('');
+
+      // habilitar / deshabilitar paginado
+      const pageSizeNow = pageSize;
+      const lastPage = Math.max(1, Math.ceil(total / pageSizeNow));
+      $btnPrev.disabled = (page <= 1);
+      $btnNext.disabled = (page >= lastPage);
+
+    } catch (err) {
+      console.error(err);
+      $tbody.innerHTML = '<tr><td colspan="15" class="text-center py-4 text-danger">Error al cargar datos.</td></tr>';
+    }
+  }
+
+  // Eventos
+  $motivoBtns.forEach(btn => btn.addEventListener('click', () => { setActive(btn); motivo = btn.dataset.motivoDet; page = 1; load(); }));
+  $pageSize.addEventListener('change', () => { page = 1; load(); });
+  $btnPrev.addEventListener('click', () => { if (page > 1) { page--; load(); } });
+  $btnNext.addEventListener('click', () => { page++; load(); });
+
+  // Inicio
+  setActive($motivoBtns[0]);
+  load();
+})();
+</script>

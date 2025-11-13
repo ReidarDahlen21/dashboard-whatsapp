@@ -1,0 +1,286 @@
+<h2 class="h5 my-4">
+  Día Anterior
+  <small class="text-body-secondary ms-2 fw-normal fs-6">(vs promedio histórico)</small>
+</h2>
+
+
+<div class="row g-3 row-cols-1 row-cols-sm-2 row-cols-lg-5">
+  <% if (kpis && kpis.length) { %>
+    <% kpis.forEach(k => { %>
+      <div class="col">
+        <div class="card shadow-sm h-100">
+          <div class="card-body">
+            <div class="text-muted small mb-1">
+              <%= k.label %>
+            </div>
+            <div class="display-6 fw-semibold"><%= k.value %></div>
+            <div class="badge <%= k.badgeClass %> mt-2"><%= k.deltaText %></div>
+          </div>
+        </div>
+      </div>
+    <% }) %>
+  <% } else { %>
+    <div class="col-12">
+      <div class="alert alert-warning">No hay datos para mostrar.</div>
+    </div>
+  <% } %>
+</div>
+
+<hr class="my-4">
+
+<div class="row g-4">
+  <!-- Columna izquierda -->
+  <div class="col-12 col-lg-6">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h2 class="h5 mb-0">Últimos 10 días</h2>
+
+      <div class="btn-group btn-group-sm" role="group" aria-label="Filtro motivo">
+        <button type="button" class="btn btn-outline-secondary active" data-motivo="total">Total</button>
+        <button type="button" class="btn btn-outline-secondary" data-motivo="_1p">_1p</button>
+        <button type="button" class="btn btn-outline-secondary" data-motivo="_2p">_2p</button>
+        <button type="button" class="btn btn-outline-secondary" data-motivo="_3p">_3p</button>
+      </div>
+    </div>
+
+    <div class="table-responsive border rounded-4">
+      <table class="table table-hover align-middle mb-0" id="tabla-ultimos7">
+        <thead class="table-light">
+          <tr>
+            <th>Fecha</th>
+            <th class="text-end">Enviados</th>
+            <th class="text-end">Prom. RefUtil</th>
+            <th class="text-end">Prom. RefUtil Bloq</th>
+            <th class="text-end">OK</th>
+            <th class="text-end">Mal</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td colspan="6" class="text-center py-4 text-body-secondary">Cargando…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Columna derecha: gráfico mixto -->
+  <div class="col-12 col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h3 class="h6 mb-0">Mensajería — últimos <span id="lbl-dias-chart">10</span> días</h3>
+          <!-- opcional: se sincroniza con los mismos botones de motivo -->
+        </div>
+        <canvas id="mensajeriaChart" height="140"></canvas>
+        <div class="small text-body-secondary mt-2">
+          Área: enviados (izq). Barras apiladas: OK / Mal (izq). Líneas: %Respuestas y %OK (der).
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  const $tableBody = document.querySelector('#tabla-ultimos7 tbody');
+  const $btns = document.querySelectorAll('[data-motivo]');
+
+  // --- Config ---
+  const DIAS = 10;                 // cantidad de días a mostrar en tabla y gráfico
+  const ENABLE_HEATMAP = false;    // dejalo en false por ahora (texto plano)
+
+  // labels de los títulos (si los tenés en el HTML)
+  const lblDias = document.getElementById('lbl-dias');
+  const lblDiasChart = document.getElementById('lbl-dias-chart');
+
+  // --- Utilidades ---
+  function setActive(target) { $btns.forEach(b => b.classList.toggle('active', b === target)); }
+  function formatNum(n) { return Number(n || 0).toLocaleString('es-AR'); }
+
+  // Heatmap (apagado si ENABLE_HEATMAP=false)
+  const THRESH1 = 0.01, THRESH2 = 0.05;
+  function heatClass(value, avg) {
+    if (!ENABLE_HEATMAP) return "";
+    const v = Number(value), a = Number(avg);
+    if (!isFinite(v) || !isFinite(a)) return "";
+    if (a === 0) return v > 0 ? "heat-pos-2" : "";
+    const pct = (v - a) / a;
+    if (Math.abs(pct) < THRESH1) return "";
+    return (Math.abs(pct) > THRESH2)
+      ? (pct > 0 ? "heat-pos-2" : "heat-neg-2")
+      : (pct > 0 ? "heat-pos-1" : "heat-neg-1");
+  }
+
+  // --- Chart.js ---
+  const ctx = document.getElementById('mensajeriaChart')?.getContext('2d');
+  let chart = null;
+
+  function buildChart(rows) {
+    if (!ctx) return;
+
+    // ordenar ascendente por fecha para la serie temporal
+    const dataAsc = [...rows].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+    const labels = dataAsc.map(r => (r.fecha || '').toString().slice(0, 10));
+    const enviados = dataAsc.map(r => Number(r.enviados || 0));
+    const ok = dataAsc.map(r => Number(r.ok || 0));
+    const mal = dataAsc.map(r => Number(r.mal || 0));
+    const pctRespuestas = dataAsc.map(r => Number(r.pctRespuestas || 0));
+    const pctOk = dataAsc.map(r => Number(r.pctOk || 0));
+
+    if (chart) chart.destroy();
+
+    chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+  // Área (enviados) - eje izquierdo
+  {
+    type: 'line',
+    label: 'enviados',
+    data: enviados,
+    yAxisID: 'y',
+    tension: 0.3,
+    fill: true,
+    borderColor: 'rgba(13,110,253,0.8)',   // azul bootstrap-ish
+    backgroundColor: 'rgba(13,110,253,0.12)', // área más clara
+    pointRadius: 0,
+    order: 3
+  },
+  // Barras apiladas: OK (verde) y Mal (rojo) - eje izquierdo
+  {
+    type: 'bar',
+    label: 'ok',
+    data: ok,
+    yAxisID: 'y',
+    stack: 'estado',
+    backgroundColor: '#198754',  // verde
+    borderColor: '#198754',
+    borderWidth: 0,
+    order: 2
+  },
+  {
+    type: 'bar',
+    label: 'mal',
+    data: mal,
+    yAxisID: 'y',
+    stack: 'estado',
+    backgroundColor: '#dc3545',  // rojo
+    borderColor: '#dc3545',
+    borderWidth: 0,
+    order: 2
+  },
+  // Líneas de % - eje derecho
+  {
+    type: 'line',
+    label: '%Respuestas',
+    data: pctRespuestas,
+    yAxisID: 'y1',
+    tension: 0.3,
+    pointRadius: 3,
+    borderWidth: 2,
+    borderColor: '#6f42c1',      // violeta
+    backgroundColor: '#6f42c1',
+    fill: false,
+    order: 1
+  },
+  {
+    type: 'line',
+    label: '%OK',
+    data: pctOk,
+    yAxisID: 'y1',
+    tension: 0.3,
+    pointRadius: 3,
+    borderWidth: 2,
+    borderColor: '#198754',      // verde (igual que barras OK)
+    backgroundColor: '#198754',
+    fill: false,
+    order: 1
+  },
+]
+
+      },
+      options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'top' },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => {
+                const isPct = ctx.dataset.yAxisID === 'y1';
+                const v = ctx.parsed.y;
+                return `${ctx.dataset.label}: ${isPct ? (v?.toFixed?.(1) + '%') : v?.toLocaleString?.('es-AR')}`;
+              }
+            }
+          }
+        },
+        scales: {
+          y: { position: 'left', title: { display: true, text: 'Cantidad' }, beginAtZero: true },
+          y1:{ position: 'right', title: { display: true, text: '%' }, beginAtZero: true, suggestedMax: 100, grid: { drawOnChartArea: false } }
+        }
+      }
+    });
+  }
+
+  // --- Carga tabla + gráfico (misma fuente de datos /api/ultimos7) ---
+  async function load(motivo = 'total') {
+    if (lblDias) lblDias.textContent = DIAS;
+    if (lblDiasChart) lblDiasChart.textContent = DIAS;
+
+    $tableBody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-body-secondary">Cargando…</td></tr>';
+    try {
+      // si tu API acepta ?dias=, lo pasamos; si no, podés eliminar `&dias=${DIAS}`
+      const res = await fetch(`/api/ultimos7?motivo=${encodeURIComponent(motivo)}&dias=${DIAS}`);
+      const { ok, data, avg, error } = await res.json();
+      if (!ok) throw new Error(error || 'Error');
+
+      // Render tabla
+      if (!data?.length) {
+        $tableBody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-body-secondary">Sin datos.</td></tr>';
+      } else {
+        const A = {
+          enviados: avg?.AvgEnviados ?? 0,
+          promRU:   avg?.AvgProm_RefUtil ?? 0,
+          promRUB:  avg?.AvgProm_RefUtilBloq ?? 0,
+          ok:       avg?.AvgOk ?? 0,
+          mal:      avg?.AvgMal ?? 0
+        };
+
+        $tableBody.innerHTML = data.map(r => {
+          const c1 = heatClass(r.enviados,               A.enviados);
+          const c2 = heatClass(r.prom_RefUtil,           A.promRU);
+          const c3 = heatClass(r.prom_RefUtilBloqueante, A.promRUB);
+          const c4 = heatClass(r.ok,                     A.ok);
+          const c5 = heatClass(r.mal,                    A.mal);
+          const fecha = (r.fecha || '').toString().slice(0,10);
+
+          return `
+            <tr>
+              <td>${fecha}</td>
+              <td class="text-end ${c1}">${formatNum(r.enviados)}</td>
+              <td class="text-end ${c2}">${formatNum(r.prom_RefUtil)}</td>
+              <td class="text-end ${c3}">${formatNum(r.prom_RefUtilBloqueante)}</td>
+              <td class="text-end ${c4}">${formatNum(r.ok)}</td>
+              <td class="text-end ${c5}">${formatNum(r.mal)}</td>
+            </tr>
+          `;
+        }).join('');
+      }
+
+      // Render gráfico (usa pctRespuestas y pctOk que devuelve el SP)
+      buildChart(data || []);
+    } catch (err) {
+      console.error(err);
+      $tableBody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-danger">Error al cargar datos.</td></tr>';
+      buildChart([]); // limpia el gráfico si falló
+    }
+  }
+
+  // Eventos de filtro por motivo
+  $btns.forEach(btn => btn.addEventListener('click', () => { setActive(btn); load(btn.dataset.motivo); }));
+
+  // Carga inicial
+  load('total');
+})();
+</script>

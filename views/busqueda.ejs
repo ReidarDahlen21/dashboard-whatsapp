@@ -11,6 +11,7 @@
 
 <script>
 (function () {
+    const BASE = window.BASE_PATH || "";
   const $q = document.getElementById('q');
   const $btn = document.getElementById('btnBuscar');
   const $out = document.getElementById('resultado');
@@ -73,7 +74,8 @@
     }
     $out.innerHTML = `<div class="text-body-secondary">Buscando…</div>`;
     try {
-      const res = await fetch(`/api/busqueda?term=${encodeURIComponent(term)}`);
+      const res = await fetch(`${BASE}/api/busqueda?term=${encodeURIComponent(term)}`);
+
       const { ok, data, error } = await res.json();
       if (!ok) throw new Error(error || 'Error');
       renderMessages(term, data || []);

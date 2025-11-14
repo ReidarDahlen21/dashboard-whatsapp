@@ -79,8 +79,9 @@
 
     $tbody.innerHTML = '<tr><td colspan="15" class="text-center py-4 text-body-secondary">Cargando…</td></tr>';
     try {
-      const url = `/api/detalle?motivo=${encodeURIComponent(motivo)}&dias=${DIAS}&page=${page}&pageSize=${pageSize}`;
+      const url = `${BASE}/api/detalle?motivo=${encodeURIComponent(motivo)}&dias=${DIAS}&page=${page}&pageSize=${pageSize}`;
       const { ok, data, total: tot, error } = await (await fetch(url)).json();
+
       if (!ok) throw new Error(error || 'Error');
 
       total = tot || 0;

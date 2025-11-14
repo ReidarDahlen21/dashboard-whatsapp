@@ -81,6 +81,8 @@
 
 <script>
 (function () {
+   const BASE = window.BASE_PATH || "";
+
   const $tableBody = document.querySelector('#tabla-ultimos7 tbody');
   const $btns = document.querySelectorAll('[data-motivo]');
 
@@ -231,7 +233,8 @@
     $tableBody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-body-secondary">Cargando…</td></tr>';
     try {
       // si tu API acepta ?dias=, lo pasamos; si no, podés eliminar `&dias=${DIAS}`
-      const res = await fetch(`/api/ultimos7?motivo=${encodeURIComponent(motivo)}&dias=${DIAS}`);
+      const res = await fetch(`${BASE}/api/ultimos7?motivo=${encodeURIComponent(motivo)}&dias=${DIAS}`);
+
       const { ok, data, avg, error } = await res.json();
       if (!ok) throw new Error(error || 'Error');
 

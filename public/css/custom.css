@@ -38,3 +38,10 @@ td.heat-neg-2 { background-color: rgba(220,53,69,0.40) !important; }
 #svc-indicator {
   line-height: 1;          /* evita extra espacio vertical */
 }
+
+/* Ajuste global de tipografía para pantallas más chicas */
+@media (max-width: 1400px) {
+  html {
+    font-size: 13px;  /* antes suele ser 16px → baja ~1–2 puntos */
+  }
+}

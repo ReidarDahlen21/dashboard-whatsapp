@@ -49,6 +49,7 @@
 
 <script>
 (function () {
+    const BASE = window.BASE_PATH || "";
   const $tbody = document.querySelector('#tabla-cierres tbody');
   const $lblDias = document.getElementById('lbl-dias-cierres');
   const $selDias = document.getElementById('sel-dias');
@@ -142,7 +143,8 @@
     $lblDias.textContent = DIAS;
     $tbody.innerHTML = '<tr><td colspan="2" class="text-center py-4 text-body-secondary">Cargando…</td></tr>';
     try {
-      const res = await fetch(`/api/cierres?dias=${DIAS}`);
+      const res = await fetch(`${BASE}/api/cierres?dias=${DIAS}`);
+
       const { ok, data, avg, error } = await res.json();
       if (!ok) throw new Error(error || 'Error');
 

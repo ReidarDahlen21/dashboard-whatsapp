@@ -9,9 +9,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300..800&display=swap" rel="stylesheet">
-  <link href="/public/css/custom.css" rel="stylesheet">
+  <link href="<%= basePath %>/public/css/custom.css" rel="stylesheet">
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+  <script>
+    window.BASE_PATH = "<%= basePath %>";
+  </script>
 </head>
 <body>
 <!-- navbar (reemplazá tu <nav> actual) -->
@@ -29,16 +33,20 @@
     <div id="navMain" class="collapse navbar-collapse">
       <ul class="navbar-nav ms-auto">
         <li class="nav-item">
-          <a class="nav-link <%= nav.general ? 'active' : '' %>" <%= nav.general ? 'aria-current="page"' : '' %> href="/">General</a>
+          <!-- <a class="nav-link <%= nav.general ? 'active' : '' %>" <%= nav.general ? 'aria-current="page"' : '' %> href="/">General</a> -->
+           <a class="nav-link <%= nav.general ? 'active' : '' %>" href="<%= basePath %>/">General</a>
         </li>
         <li class="nav-item">
-          <a class="nav-link <%= nav.detalle ? 'active' : '' %>" <%= nav.detalle ? 'aria-current="page"' : '' %> href="/metricas">Detalle</a>
+          <!-- <a class="nav-link <%= nav.detalle ? 'active' : '' %>" <%= nav.detalle ? 'aria-current="page"' : '' %> href="/metricas">Detalle</a> -->
+           <a class="nav-link <%= nav.detalle ? 'active' : '' %>" href="<%= basePath %>/metricas">Detalle</a>
         </li>
         <li class="nav-item">
-          <a class="nav-link <%= nav.cierres ? 'active' : '' %>" <%= nav.cierres ? 'aria-current="page"' : '' %> href="/cierres">Cierres</a>
+          <!-- <a class="nav-link <%= nav.cierres ? 'active' : '' %>" <%= nav.cierres ? 'aria-current="page"' : '' %> href="/cierres">Cierres</a> -->           
+          <a class="nav-link <%= nav.cierres ? 'active' : '' %>" href="<%= basePath %>/cierres">Cierres</a>
         </li>
         <li class="nav-item">
-          <a class="nav-link <%= nav.busqueda ? 'active' : '' %>" <%= nav.busqueda ? 'aria-current="page"' : '' %> href="/busqueda">Búsqueda</a>
+          <!-- <a class="nav-link <%= nav.busqueda ? 'active' : '' %>" <%= nav.busqueda ? 'aria-current="page"' : '' %> href="/busqueda">Búsqueda</a> -->
+           <a class="nav-link <%= nav.busqueda ? 'active' : '' %>" href="<%= basePath %>/busqueda">Búsqueda</a>
         </li>
         <li class="nav-item ms-lg-3">
           <button

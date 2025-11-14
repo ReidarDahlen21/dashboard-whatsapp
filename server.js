@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import morgan from "morgan";
 import path from "path";
@@ -16,6 +17,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+const BASE_PATH = process.env.BASE_PATH || "";
 
 // EJS
 app.set("views", path.join(__dirname, "views"));
@@ -28,6 +30,12 @@ app.use("/public", express.static(path.join(__dirname, "public")));
 
 // Logs
 app.use(morgan("dev"));
+
+// Base path para deploy detrás de /dashboard-whatsapp
+app.use((req, res, next) => {
+  res.locals.basePath = BASE_PATH;   // ej: "" en local, "/dashboard-whatsapp" en server
+  next();
+});
 
 // Marca activa para navbar
 app.use((req, res, next) => {

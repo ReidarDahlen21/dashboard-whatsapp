@@ -1,7 +1,4 @@
-<h2 class="h5 my-4">
-  Día Anterior
-  <small class="text-body-secondary ms-2 fw-normal fs-6">(vs promedio histórico)</small>
-</h2>
+<h2 class="h5 mb-3 mt-2">Día Anterior</h2>
 
 
 <div class="row g-3 row-cols-1 row-cols-sm-2 row-cols-lg-5">
@@ -14,7 +11,11 @@
               <%= k.label %>
             </div>
             <div class="display-6 fw-semibold"><%= k.value %></div>
+            <% if (k.campoLine) { %>
+            <div class="small text-body-secondary mt-2 fw-bold"><%= k.campoLine %></div>
+            <% } else if (k.key !== 'pctRespuestas' && k.key !== 'pctOk') { %>
             <div class="badge <%= k.badgeClass %> mt-2"><%= k.deltaText %></div>
+            <% } %>
           </div>
         </div>
       </div>

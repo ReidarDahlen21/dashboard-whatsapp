@@ -40,7 +40,7 @@
         </div>
         <canvas id="cierresChart" height="160"></canvas>
         <div class="small text-body-secondary mt-2">
-          Barras: cierres/día. Línea y área: promedio histórico diario.
+          Barras apiladas: Campo (cea) / Centro Técnico (back, bo) / Otros. Línea: promedio histórico diario.
         </div>
       </div>
     </div>
@@ -69,9 +69,20 @@
     // ascendente para el gráfico
     const dataAsc = [...rows].sort((a,b) => new Date(a.fecha) - new Date(b.fecha));
     const labels = dataAsc.map(r => fmtDate(r.fecha));
-    const totals = dataAsc.map(r => Number(r.total || 0));
-
     const avgArr = labels.map(_ => Number(avg || 0));
+    let campo = dataAsc.map((r) => Number(r.campo ?? r.Campo ?? 0));
+    let centroTecnico = dataAsc.map((r) => Number(r.centroTecnico ?? r.CentroTecnico ?? 0));
+    let otros = dataAsc.map((r) => Number(r.otros ?? r.Otros ?? 0));
+    const sumBreakdown = (i) => campo[i] + centroTecnico[i] + otros[i];
+    const needsLegacyStack = dataAsc.some((r, i) => {
+      const t = Number(r.total || 0);
+      return t > 0 && sumBreakdown(i) === 0;
+    });
+    if (needsLegacyStack) {
+      campo = dataAsc.map(() => 0);
+      centroTecnico = dataAsc.map(() => 0);
+      otros = dataAsc.map((r) => Number(r.total || 0));
+    }
 
     if (chart) chart.destroy();
 
@@ -80,40 +91,50 @@
       data: {
         labels,
         datasets: [
-          // área suave del promedio (gris)
-            {
+          {
             type: 'line',
-            label: 'promedio (área)',
+            label: 'Promedio Histórico',
             data: avgArr,
             yAxisID: 'y',
-            borderWidth: 0,
-            pointRadius: 0,
-            fill: true,
-            backgroundColor: 'rgba(108,117,125,0.12)', // gris claro (secondary)
-            order: 0
-            },
-            // línea del promedio (gris marcado, punteada)
-            {
-            type: 'line',
-            label: 'promedio histórico',
-            data: avgArr,
-            yAxisID: 'y',
-            borderColor: 'rgba(108,117,125,0.9)',      // gris oscuro
+            stack: 'promLine',
+            borderColor: 'rgba(108,117,125,0.9)',
             backgroundColor: 'rgba(108,117,125,0.9)',
             borderWidth: 2,
-            borderDash: [6,4],
+            borderDash: [6, 4],
             pointRadius: 0,
             tension: 0,
-            order: 1
-            },
-
-          // barras de cierres
+            fill: false,
+            order: 0
+          },
           {
             type: 'bar',
-            label: 'cierres',
-            data: totals,
+            label: 'Campo',
+            data: campo,
             yAxisID: 'y',
-            backgroundColor: '#0d6efd',   // azul
+            stack: 'cierres',
+            backgroundColor: '#dc3545',
+            borderColor: '#dc3545',
+            borderWidth: 0,
+            order: 2
+          },
+          {
+            type: 'bar',
+            label: 'Centro Técnico',
+            data: centroTecnico,
+            yAxisID: 'y',
+            stack: 'cierres',
+            backgroundColor: '#198754',
+            borderColor: '#198754',
+            borderWidth: 0,
+            order: 2
+          },
+          {
+            type: 'bar',
+            label: 'Otros',
+            data: otros,
+            yAxisID: 'y',
+            stack: 'cierres',
+            backgroundColor: '#0d6efd',
             borderColor: '#0d6efd',
             borderWidth: 0,
             order: 2
@@ -125,15 +146,30 @@
         interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { position: 'top' },
-          tooltip: { callbacks: {
-            label: (ctx) => {
-              const v = ctx.parsed.y;
-              return `${ctx.dataset.label}: ${v?.toLocaleString?.('es-AR')}`;
+          tooltip: {
+            callbacks: {
+              label: (ctx) => {
+                const v = ctx.parsed.y;
+                return `${ctx.dataset.label}: ${v?.toLocaleString?.('es-AR')}`;
+              },
+              footer: (items) => {
+                const barItems = items.filter((i) => i.dataset.stack === 'cierres');
+                if (!barItems.length) return '';
+                const sum = barItems.reduce((s, i) => s + (Number(i.parsed.y) || 0), 0);
+                return `Total día: ${sum.toLocaleString('es-AR')}`;
+              }
             }
-          } }
+          }
         },
         scales: {
-          y: { beginAtZero: true, title: { display: true, text: 'Cantidad' } }
+          x: {
+            stacked: true
+          },
+          y: {
+            stacked: true,
+            beginAtZero: true,
+            title: { display: true, text: 'Cantidad' }
+          }
         }
       }
     });

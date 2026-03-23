@@ -17,15 +17,21 @@
     </div>
 
     <div class="table-responsive border rounded-4">
-      <table class="table table-hover align-middle mb-0" id="tabla-cierres">
+      <table class="table table-hover table-cierres-heatmap align-middle mb-0" id="tabla-cierres">
+        <colgroup>
+          <col class="cierres-col" /><col class="cierres-col" /><col class="cierres-col" /><col class="cierres-col" /><col class="cierres-col" />
+        </colgroup>
         <thead class="table-light">
           <tr>
             <th>Fecha</th>
-            <th class="text-end">Total de casos</th>
+            <th class="text-end">Campo</th>
+            <th class="text-end">Centro Técnico</th>
+            <th class="text-end">Otros</th>
+            <th class="text-end">Total</th>
           </tr>
         </thead>
         <tbody>
-          <tr><td colspan="2" class="text-center py-4 text-body-secondary">Cargando…</td></tr>
+          <tr><td colspan="5" class="text-center py-3 text-body-secondary">Cargando…</td></tr>
         </tbody>
       </table>
     </div>
@@ -63,6 +69,84 @@
   function fmt(n){ return Number(n || 0).toLocaleString('es-AR'); }
   function fmtDate(d){ return (d || '').toString().slice(0,10); }
 
+  /** Domingo = 0 (fecha local Y-M-D). */
+  function fmtFechaConDomingo(iso) {
+    const s = fmtDate(iso);
+    const p = s.split('-');
+    if (p.length !== 3) return s;
+    const y = +p[0], m = +p[1], d = +p[2];
+    const dt = new Date(y, m - 1, d);
+    return dt.getDay() === 0 ? `${s} (D)` : s;
+  }
+
+  function rowBreakdown(r) {
+    let c = Number(r.campo ?? r.Campo ?? 0);
+    let ct = Number(r.centroTecnico ?? r.CentroTecnico ?? 0);
+    let o = Number(r.otros ?? r.Otros ?? 0);
+    const tot = Number(r.total || 0);
+    if (tot > 0 && c + ct + o === 0) {
+      c = 0; ct = 0; o = tot;
+    }
+    return { c, ct, o, tot };
+  }
+
+  /** Luminancia relativa sRGB (WCAG), 0–1. */
+  function relLuminance(rr, gg, bb) {
+    const lin = [rr, gg, bb].map((c) => {
+      c /= 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+  }
+
+  /** Elige texto claro u oscuro según mejor contraste con el fondo. */
+  function heatForeground(r, g, b) {
+    const Lbg = relLuminance(r, g, b);
+    const Ldark = relLuminance(33, 37, 41);
+    const Llight = 1;
+    const cOnLight = (Math.max(Lbg, Llight) + 0.05) / (Math.min(Lbg, Llight) + 0.05);
+    const cOnDark = (Math.max(Lbg, Ldark) + 0.05) / (Math.min(Lbg, Ldark) + 0.05);
+    return cOnLight >= cOnDark ? '#f8f9fa' : '#212529';
+  }
+
+  /**
+   * Valores medios del rango (por columna) = fondo blanco; solo extremos con color (bajo coral, alto verde apagado).
+   * color: según contraste para leer bien en rojo/verde fuertes.
+   */
+  function heatCellStyle(value, min, max) {
+    const v = Number(value) || 0;
+    const white = [255, 255, 255];
+    let r, g, b;
+    if (max <= min) {
+      r = g = b = 255;
+    } else {
+      const t = Math.min(1, Math.max(0, (v - min) / (max - min)));
+      const lowEdge = 0.34;
+      const highEdge = 0.66;
+      const bad = [192, 72, 80];
+      const good = [34, 136, 112];
+      if (t <= lowEdge) {
+        const u = lowEdge > 0 ? t / lowEdge : 0;
+        r = Math.round(bad[0] + (white[0] - bad[0]) * u);
+        g = Math.round(bad[1] + (white[1] - bad[1]) * u);
+        b = Math.round(bad[2] + (white[2] - bad[2]) * u);
+      } else if (t >= highEdge) {
+        const span = 1 - highEdge;
+        const u = span > 0 ? (t - highEdge) / span : 1;
+        r = Math.round(white[0] + (good[0] - white[0]) * u);
+        g = Math.round(white[1] + (good[1] - white[1]) * u);
+        b = Math.round(white[2] + (good[2] - white[2]) * u);
+      } else {
+        r = white[0];
+        g = white[1];
+        b = white[2];
+      }
+    }
+    const bg = `rgb(${r},${g},${b})`;
+    const fg = heatForeground(r, g, b);
+    return `background-color:${bg};color:${fg}`;
+  }
+
   function buildChart(rows, avg) {
     if (!ctx) return;
 
@@ -85,6 +169,22 @@
     }
 
     if (chart) chart.destroy();
+
+    const barTopRadius = 6;
+    /** Esquinas superiores solo en el segmento que cierra la pila (varía si Otros/CT/Campo es 0). */
+    function stackedBarTopRadius(ctx) {
+      const i = ctx.dataIndex;
+      const o = Number(otros[i] || 0);
+      const ct = Number(centroTecnico[i] || 0);
+      const c = Number(campo[i] || 0);
+      const label = ctx.dataset.label;
+      const r = barTopRadius;
+      const top = { topLeft: r, topRight: r, bottomLeft: 0, bottomRight: 0 };
+      if (label === 'Otros' && o > 0) return top;
+      if (label === 'Centro Técnico' && o <= 0 && ct > 0) return top;
+      if (label === 'Campo' && o <= 0 && ct <= 0 && c > 0) return top;
+      return 0;
+    }
 
     chart = new Chart(ctx, {
       type: 'bar',
@@ -112,9 +212,10 @@
             data: campo,
             yAxisID: 'y',
             stack: 'cierres',
-            backgroundColor: '#dc3545',
-            borderColor: '#dc3545',
+            backgroundColor: '#D53E0F',
+            borderColor: '#D53E0F',
             borderWidth: 0,
+            borderRadius: stackedBarTopRadius,
             order: 2
           },
           {
@@ -123,9 +224,10 @@
             data: centroTecnico,
             yAxisID: 'y',
             stack: 'cierres',
-            backgroundColor: '#198754',
-            borderColor: '#198754',
+            backgroundColor: '#408A71',
+            borderColor: '#408A71',
             borderWidth: 0,
+            borderRadius: stackedBarTopRadius,
             order: 2
           },
           {
@@ -137,6 +239,7 @@
             backgroundColor: '#0d6efd',
             borderColor: '#0d6efd',
             borderWidth: 0,
+            borderRadius: stackedBarTopRadius,
             order: 2
           }
         ]
@@ -177,7 +280,7 @@
 
   async function load() {
     $lblDias.textContent = DIAS;
-    $tbody.innerHTML = '<tr><td colspan="2" class="text-center py-4 text-body-secondary">Cargando…</td></tr>';
+    $tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-body-secondary">Cargando…</td></tr>';
     try {
       const res = await fetch(`${BASE}/api/cierres?dias=${DIAS}`);
 
@@ -185,23 +288,37 @@
       if (!ok) throw new Error(error || 'Error');
 
       if (!data?.length) {
-        $tbody.innerHTML = '<tr><td colspan="2" class="text-center py-4 text-body-secondary">Sin datos.</td></tr>';
+        $tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-body-secondary">Sin datos.</td></tr>';
         buildChart([], avg);
         return;
       }
 
-      // tabla (orden DESC ya viene del SP)
-      $tbody.innerHTML = data.map(r => `
+      const br = data.map((r) => rowBreakdown(r));
+      const minC = Math.min(...br.map((x) => x.c));
+      const maxC = Math.max(...br.map((x) => x.c));
+      const minCT = Math.min(...br.map((x) => x.ct));
+      const maxCT = Math.max(...br.map((x) => x.ct));
+      const minO = Math.min(...br.map((x) => x.o));
+      const maxO = Math.max(...br.map((x) => x.o));
+      const minT = Math.min(...br.map((x) => x.tot));
+      const maxT = Math.max(...br.map((x) => x.tot));
+
+      $tbody.innerHTML = data.map((r, i) => {
+        const { c, ct, o, tot } = br[i];
+        return `
         <tr>
-          <td>${fmtDate(r.fecha)}</td>
-          <td class="text-end">${fmt(r.total)}</td>
-        </tr>
-      `).join('');
+          <td class="text-nowrap cierres-fecha">${fmtFechaConDomingo(r.fecha)}</td>
+          <td class="text-end heat-cell heat-cell-num" style="${heatCellStyle(c, minC, maxC)}">${fmt(c)}</td>
+          <td class="text-end heat-cell heat-cell-num" style="${heatCellStyle(ct, minCT, maxCT)}">${fmt(ct)}</td>
+          <td class="text-end heat-cell heat-cell-num" style="${heatCellStyle(o, minO, maxO)}">${fmt(o)}</td>
+          <td class="text-end heat-cell heat-cell-num fw-semibold cierres-total-heat" style="${heatCellStyle(tot, minT, maxT)}">${fmt(tot)}</td>
+        </tr>`;
+      }).join('');
 
       buildChart(data, avg);
     } catch (err) {
       console.error(err);
-      $tbody.innerHTML = '<tr><td colspan="2" class="text-center py-4 text-danger">Error al cargar datos.</td></tr>';
+      $tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-danger">Error al cargar datos.</td></tr>';
       buildChart([], 0);
     }
   }

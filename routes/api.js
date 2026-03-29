@@ -26,6 +26,14 @@ function diffUtcDays(a, b) {
   return Math.round((b.getTime() - a.getTime()) / 86400000);
 }
 
+/** Fecha calendario UTC como YYYY-MM-DD (evita que sql.Date corra un día al serializar Date en TZ local del servidor). */
+function formatUtcYmd(d) {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 router.get("/ultimos7", async (req, res) => {
   try {
     const allowed = new Set(["total", "_1p", "_2p", "_3p"]);
@@ -33,8 +41,10 @@ router.get("/ultimos7", async (req, res) => {
     const desdeQ = (req.query.desde || "").trim();
     const hastaQ = (req.query.hasta || "").trim();
 
-    /** @type {Date | null} límite exclusivo (@AsOfDate en el SP = día siguiente a `hasta` inclusive) */
-    let asOfDate = null;
+    /** @type {Date | null} límite exclusivo en UTC (día siguiente a `hasta` inclusive) */
+    let asOfDateUtc = null;
+    /** @type {string | null} mismo valor para el driver SQL (tipo date sin zona) */
+    let asOfDateSql = null;
     let daysBack;
 
     if (desdeQ || hastaQ) {
@@ -56,8 +66,9 @@ router.get("/ultimos7", async (req, res) => {
       if (inclusiveDays > 60) {
         return res.status(400).json({ ok: false, error: "El rango máximo es 60 días inclusive." });
       }
-      asOfDate = addUtcDays(hasta, 1);
-      daysBack = diffUtcDays(desde, asOfDate);
+      asOfDateUtc = addUtcDays(hasta, 1);
+      asOfDateSql = formatUtcYmd(asOfDateUtc);
+      daysBack = diffUtcDays(desde, asOfDateUtc);
       if (daysBack < 1 || daysBack > 60) {
         return res.status(400).json({ ok: false, error: "Rango de fechas inválido." });
       }
@@ -67,7 +78,7 @@ router.get("/ultimos7", async (req, res) => {
 
     const pool = await getPool();
     const r = await pool.request()
-      .input("AsOfDate", sql.Date, asOfDate)
+      .input("AsOfDate", sql.Date, asOfDateSql)
       .input("Motivo", sql.NVarChar, motivo)
       .input("DaysBack", sql.Int, daysBack)
       .execute("dbo.usp_Dashboard_EnvioUltimos7");
@@ -75,6 +86,7 @@ router.get("/ultimos7", async (req, res) => {
     const data = r.recordsets?.[0] || [];
     const avg = r.recordsets?.[1]?.[0] || null;
 
+    res.set("Cache-Control", "no-store");
     res.json({ ok: true, data, avg });
   } catch (e) {
     console.error("GET /api/ultimos7", e);

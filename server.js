@@ -27,7 +27,6 @@ app.set("layout", "layout");             // <-- usa views/layout.ejs por defecto
 
 // Static
 app.use("/public", express.static(path.join(__dirname, "public")));
-app.use("/vendor/xlsx", express.static(path.join(__dirname, "node_modules/xlsx/dist")));
 
 // Logs
 app.use(morgan("dev"));

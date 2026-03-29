@@ -96,7 +96,7 @@
 
 </div>
 
-<script src="<%= basePath %>/vendor/xlsx/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" crossorigin="anonymous"></script>
 <script>
 (function () {
    const BASE = window.BASE_PATH || "";
@@ -349,7 +349,7 @@
         desde: desdeStr,
         hasta: hastaStr,
       });
-      const res = await fetch(`${BASE}/api/ultimos7?${q}`);
+      const res = await fetch(`${BASE}/api/ultimos7?${q}`, { cache: "no-store" });
       const payload = await res.json();
       if (!payload.ok) throw new Error(payload.error || `Error ${res.status}`);
 

@@ -94,6 +94,36 @@ router.get("/ultimos7", async (req, res) => {
   }
 });
 
+router.get("/envio-mensual", async (req, res) => {
+  try {
+    const allowed = new Set(["total", "_1p", "_2p", "_3p"]);
+    const motivo = allowed.has((req.query.motivo || "total")) ? req.query.motivo : "total";
+    const asOfQ = (req.query.asOf || "").trim();
+    let asOfSql = null;
+    if (asOfQ) {
+      if (!parseDateOnlyUtc(asOfQ)) {
+        return res.status(400).json({ ok: false, error: "Parámetro asOf inválido. Usá YYYY-MM-DD." });
+      }
+      asOfSql = asOfQ;
+    }
+
+    const pool = await getPool();
+    const r = await pool.request()
+      .input("AsOfDate", sql.Date, asOfSql)
+      .input("Motivo", sql.NVarChar, motivo)
+      .execute("dbo.usp_Dashboard_EnvioUltimos12Meses");
+
+    const data = r.recordsets?.[0] || [];
+    const avg = r.recordsets?.[1]?.[0] || null;
+
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, data, avg });
+  } catch (e) {
+    console.error("GET /api/envio-mensual", e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 router.get("/detalle", async (req, res) => {
   try {
     const allowed = new Set(["total", "_1p", "_2p", "_3p"]);

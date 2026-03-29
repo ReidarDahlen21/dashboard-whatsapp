@@ -19,6 +19,9 @@ GO
 
   Ejecutar en SSMS contra la base correcta (ajustar USE si aplica).
   Primera instalación: DROP + CREATE. Si ya existe, el DROP lo reemplaza.
+
+  Compatible con SQL Server 2008 R2 (10.50): no usa DATEFROMPARTS (2012+);
+  primer día de mes vía DATEADD(month, DATEDIFF(month, 0, d), 0).
 */
 IF OBJECT_ID(N'dbo.usp_Dashboard_EnvioUltimos12Meses', N'P') IS NOT NULL
   DROP PROCEDURE dbo.usp_Dashboard_EnvioUltimos12Meses;
@@ -32,7 +35,7 @@ BEGIN
   SET NOCOUNT ON;
 
   DECLARE @today date = ISNULL(@AsOfDate, CAST(GETDATE() AS date));
-  DECLARE @firstDayCurrentMonth date = DATEFROMPARTS(YEAR(@today), MONTH(@today), 1);
+  DECLARE @firstDayCurrentMonth date = DATEADD(month, DATEDIFF(month, 0, @today), 0);
 
   DECLARE @m1 nvarchar(60) = N'av_segunda_prueba_1p';
   DECLARE @m2 nvarchar(60) = N'av_segunda_prueba_2p';
@@ -54,7 +57,7 @@ BEGIN
 
   INSERT INTO #MonthMotives(mes_inicio, motivo, enviados, refUtil, refUtilBloq, ok, mal, sinRespuesta)
   SELECT
-    DATEFROMPARTS(YEAR(r.fcCarga), MONTH(r.fcCarga), 1) AS mes_inicio,
+    DATEADD(month, DATEDIFF(month, 0, CAST(r.fcCarga AS date)), 0) AS mes_inicio,
     r.motivo,
     SUM(r.enviados),
     SUM(r.cantPendienteRefUtil),
@@ -64,7 +67,7 @@ BEGIN
     SUM(r.sinRespuesta)
   FROM dbo.resumenEnvioWA r WITH (NOLOCK)
   WHERE CAST(r.fcCarga AS date) < @firstDayCurrentMonth
-  GROUP BY DATEFROMPARTS(YEAR(r.fcCarga), MONTH(r.fcCarga), 1), r.motivo;
+  GROUP BY DATEADD(month, DATEDIFF(month, 0, CAST(r.fcCarga AS date)), 0), r.motivo;
 
   CREATE TABLE #Filtered(
     mes_inicio date NOT NULL,

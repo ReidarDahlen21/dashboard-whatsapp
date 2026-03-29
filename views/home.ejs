@@ -53,7 +53,7 @@
         <input type="date" class="form-control form-control-sm" id="fecha-hasta" autocomplete="off">
       </div>
       <div class="col-auto d-flex flex-wrap gap-1">
-        <button type="button" class="btn btn-primary btn-sm" id="btn-ultimos7-aplicar">Aplicar</button>
+        <button type="button" class="btn btn-dark btn-sm" id="btn-ultimos7-aplicar">Aplicar</button>
         <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-ultimos7-excel" disabled>Excel</button>
       </div>
     </div>
@@ -298,6 +298,10 @@
     });
   }
 
+  function pctOneDecimal(v) {
+    return Math.round(Number(v || 0) * 10) / 10;
+  }
+
   function downloadExcel() {
     if (!lastRows.length || typeof XLSX === 'undefined') return;
     const sorted = [...lastRows].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
@@ -308,8 +312,8 @@
       'Prom. RefUtil Bloq': Number(r.prom_RefUtilBloqueante || 0),
       OK: Number(r.ok || 0),
       Mal: Number(r.mal || 0),
-      '%Respuestas': Number(r.pctRespuestas || 0),
-      '%OK': Number(r.pctOk || 0),
+      '%Respuestas': pctOneDecimal(r.pctRespuestas),
+      '%OK': pctOneDecimal(r.pctOk),
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();

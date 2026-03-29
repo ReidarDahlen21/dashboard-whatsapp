@@ -32,8 +32,8 @@
 <div class="row g-4">
   <!-- Columna izquierda -->
   <div class="col-12 col-lg-6">
-    <div class="d-flex justify-content-between align-items-center mb-2">
-      <h2 class="h5 mb-0">Últimos 10 días</h2>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+      <h2 class="h5 mb-0">Mensajería por día</h2>
 
       <div class="btn-group btn-group-sm" role="group" aria-label="Filtro motivo">
         <button type="button" class="btn btn-outline-secondary active" data-motivo="total">Total</button>
@@ -42,6 +42,22 @@
         <button type="button" class="btn btn-outline-secondary" data-motivo="_3p">_3p</button>
       </div>
     </div>
+
+    <div class="row g-2 align-items-end mb-2">
+      <div class="col-auto">
+        <label for="fecha-desde" class="form-label small text-body-secondary mb-0">Desde</label>
+        <input type="date" class="form-control form-control-sm" id="fecha-desde" autocomplete="off">
+      </div>
+      <div class="col-auto">
+        <label for="fecha-hasta" class="form-label small text-body-secondary mb-0">Hasta</label>
+        <input type="date" class="form-control form-control-sm" id="fecha-hasta" autocomplete="off">
+      </div>
+      <div class="col-auto d-flex flex-wrap gap-1">
+        <button type="button" class="btn btn-primary btn-sm" id="btn-ultimos7-aplicar">Aplicar</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-ultimos7-excel" disabled>Excel</button>
+      </div>
+    </div>
+    <div class="small text-danger mb-2 d-none" id="ultimos7-fecha-error" role="alert"></div>
 
     <div class="table-responsive border rounded-4">
       <table class="table table-hover align-middle mb-0" id="tabla-ultimos7">
@@ -67,7 +83,7 @@
     <div class="card shadow-sm">
       <div class="card-body">
         <div class="d-flex justify-content-between align-items-center mb-2">
-          <h3 class="h6 mb-0">Mensajería — últimos <span id="lbl-dias-chart">10</span> días</h3>
+          <h3 class="h6 mb-0">Mensajería — <span id="lbl-dias-chart">10</span> <span id="lbl-dias-chart-suffix">días</span></h3>
           <!-- opcional: se sincroniza con los mismos botones de motivo -->
         </div>
         <canvas id="mensajeriaChart" height="140"></canvas>
@@ -80,20 +96,76 @@
 
 </div>
 
+<script src="<%= basePath %>/vendor/xlsx/xlsx.full.min.js"></script>
 <script>
 (function () {
    const BASE = window.BASE_PATH || "";
 
   const $tableBody = document.querySelector('#tabla-ultimos7 tbody');
   const $btns = document.querySelectorAll('[data-motivo]');
+  const $desde = document.getElementById('fecha-desde');
+  const $hasta = document.getElementById('fecha-hasta');
+  const $btnAplicar = document.getElementById('btn-ultimos7-aplicar');
+  const $btnExcel = document.getElementById('btn-ultimos7-excel');
+  const $err = document.getElementById('ultimos7-fecha-error');
 
   // --- Config ---
-  const DIAS = 10;                 // cantidad de días a mostrar en tabla y gráfico
   const ENABLE_HEATMAP = false;    // dejalo en false por ahora (texto plano)
 
-  // labels de los títulos (si los tenés en el HTML)
   const lblDias = document.getElementById('lbl-dias');
   const lblDiasChart = document.getElementById('lbl-dias-chart');
+  const lblDiasChartSuffix = document.getElementById('lbl-dias-chart-suffix');
+
+  let lastRows = [];
+  let lastMotivo = 'total';
+  let lastDesde = '';
+  let lastHasta = '';
+
+  function toLocalISODate(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  /** Por defecto: 10 días con último día = ayer (local), alineado al SP con AsOfDate null y dias=10. */
+  function setDefaultDateRange() {
+    const hasta = new Date();
+    hasta.setHours(0, 0, 0, 0);
+    hasta.setDate(hasta.getDate() - 1);
+    const desde = new Date(hasta);
+    desde.setDate(desde.getDate() - 9);
+    $desde.value = toLocalISODate(desde);
+    $hasta.value = toLocalISODate(hasta);
+  }
+
+  function hideError() {
+    $err.classList.add('d-none');
+    $err.textContent = '';
+  }
+
+  function showError(msg) {
+    $err.textContent = msg;
+    $err.classList.remove('d-none');
+  }
+
+  function inclusiveDayCount(desdeStr, hastaStr) {
+    const a = new Date(desdeStr + 'T12:00:00');
+    const b = new Date(hastaStr + 'T12:00:00');
+    return Math.round((b - a) / 86400000) + 1;
+  }
+
+  function getActiveMotivo() {
+    const active = document.querySelector('[data-motivo].active');
+    return active?.dataset?.motivo || 'total';
+  }
+
+  function updateChartLabels(desdeStr, hastaStr) {
+    const n = inclusiveDayCount(desdeStr, hastaStr);
+    if (lblDias) lblDias.textContent = String(n);
+    if (lblDiasChart) lblDiasChart.textContent = String(n);
+    if (lblDiasChartSuffix) lblDiasChartSuffix.textContent = n === 1 ? 'día' : 'días';
+  }
 
   // --- Utilidades ---
   function setActive(target) { $btns.forEach(b => b.classList.toggle('active', b === target)); }
@@ -226,18 +298,68 @@
     });
   }
 
+  function downloadExcel() {
+    if (!lastRows.length || typeof XLSX === 'undefined') return;
+    const sorted = [...lastRows].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+    const rows = sorted.map(r => ({
+      Fecha: (r.fecha || '').toString().slice(0, 10),
+      Enviados: Number(r.enviados || 0),
+      'Prom. RefUtil': Number(r.prom_RefUtil || 0),
+      'Prom. RefUtil Bloq': Number(r.prom_RefUtilBloqueante || 0),
+      OK: Number(r.ok || 0),
+      Mal: Number(r.mal || 0),
+      '%Respuestas': Number(r.pctRespuestas || 0),
+      '%OK': Number(r.pctOk || 0),
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Mensajeria');
+    const name = `mensajeria_${lastMotivo}_${lastDesde}_${lastHasta}.xlsx`;
+    XLSX.writeFile(wb, name);
+  }
+
   // --- Carga tabla + gráfico (misma fuente de datos /api/ultimos7) ---
   async function load(motivo = 'total') {
-    if (lblDias) lblDias.textContent = DIAS;
-    if (lblDiasChart) lblDiasChart.textContent = DIAS;
+    const desdeStr = ($desde?.value || '').trim();
+    const hastaStr = ($hasta?.value || '').trim();
+    hideError();
+
+    if (!desdeStr || !hastaStr) {
+      showError('Elegí fecha desde y hasta.');
+      return;
+    }
+    if (desdeStr > hastaStr) {
+      showError('La fecha hasta no puede ser anterior a desde.');
+      return;
+    }
+    const span = inclusiveDayCount(desdeStr, hastaStr);
+    if (span > 60) {
+      showError('El rango máximo es 60 días inclusive.');
+      return;
+    }
+
+    updateChartLabels(desdeStr, hastaStr);
+    $btnExcel.disabled = true;
+    lastRows = [];
 
     $tableBody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-body-secondary">Cargando…</td></tr>';
     try {
-      // si tu API acepta ?dias=, lo pasamos; si no, podés eliminar `&dias=${DIAS}`
-      const res = await fetch(`${BASE}/api/ultimos7?motivo=${encodeURIComponent(motivo)}&dias=${DIAS}`);
+      const q = new URLSearchParams({
+        motivo,
+        desde: desdeStr,
+        hasta: hastaStr,
+      });
+      const res = await fetch(`${BASE}/api/ultimos7?${q}`);
+      const payload = await res.json();
+      if (!payload.ok) throw new Error(payload.error || `Error ${res.status}`);
 
-      const { ok, data, avg, error } = await res.json();
-      if (!ok) throw new Error(error || 'Error');
+      const { data, avg } = payload;
+
+      lastMotivo = motivo;
+      lastDesde = desdeStr;
+      lastHasta = hastaStr;
+      lastRows = data || [];
+      $btnExcel.disabled = !lastRows.length;
 
       // Render tabla
       if (!data?.length) {
@@ -272,19 +394,22 @@
         }).join('');
       }
 
-      // Render gráfico (usa pctRespuestas y pctOk que devuelve el SP)
       buildChart(data || []);
     } catch (err) {
       console.error(err);
+      showError(err.message || 'Error al cargar datos.');
       $tableBody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-danger">Error al cargar datos.</td></tr>';
-      buildChart([]); // limpia el gráfico si falló
+      buildChart([]);
+      $btnExcel.disabled = true;
+      lastRows = [];
     }
   }
 
-  // Eventos de filtro por motivo
   $btns.forEach(btn => btn.addEventListener('click', () => { setActive(btn); load(btn.dataset.motivo); }));
+  $btnAplicar?.addEventListener('click', () => load(getActiveMotivo()));
+  $btnExcel?.addEventListener('click', downloadExcel);
 
-  // Carga inicial
+  setDefaultDateRange();
   load('total');
 })();
 </script>

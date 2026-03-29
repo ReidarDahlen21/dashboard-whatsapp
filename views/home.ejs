@@ -33,17 +33,26 @@
   <!-- Columna izquierda -->
   <div class="col-12 col-lg-6">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-      <h2 class="h5 mb-0">Mensajería por día</h2>
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <h2 class="h5 mb-0">Mensajería <span class="text-body-secondary fw-normal" id="lbl-subtitulo-vista">por día</span></h2>
+        <div class="btn-group btn-group-sm" role="group" aria-label="Vista tabla">
+          <button type="button" class="btn btn-outline-secondary active" data-vista="diario">Diario</button>
+          <button type="button" class="btn btn-outline-secondary" data-vista="mensual">Mensual</button>
+        </div>
+      </div>
 
-      <div class="btn-group btn-group-sm" role="group" aria-label="Filtro motivo">
-        <button type="button" class="btn btn-outline-secondary active" data-motivo="total">Total</button>
-        <button type="button" class="btn btn-outline-secondary" data-motivo="_1p">_1p</button>
-        <button type="button" class="btn btn-outline-secondary" data-motivo="_2p">_2p</button>
-        <button type="button" class="btn btn-outline-secondary" data-motivo="_3p">_3p</button>
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <div class="btn-group btn-group-sm" role="group" aria-label="Filtro motivo">
+          <button type="button" class="btn btn-outline-secondary active" data-motivo="total">Total</button>
+          <button type="button" class="btn btn-outline-secondary" data-motivo="_1p">_1p</button>
+          <button type="button" class="btn btn-outline-secondary" data-motivo="_2p">_2p</button>
+          <button type="button" class="btn btn-outline-secondary" data-motivo="_3p">_3p</button>
+        </div>
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-ultimos7-excel" disabled>Excel</button>
       </div>
     </div>
 
-    <div class="row g-2 align-items-end mb-2">
+    <div class="row g-2 align-items-end mb-2" id="row-filtros-diario">
       <div class="col-auto">
         <label for="fecha-desde" class="form-label small text-body-secondary mb-0">Desde</label>
         <input type="date" class="form-control form-control-sm" id="fecha-desde" autocomplete="off">
@@ -52,18 +61,35 @@
         <label for="fecha-hasta" class="form-label small text-body-secondary mb-0">Hasta</label>
         <input type="date" class="form-control form-control-sm" id="fecha-hasta" autocomplete="off">
       </div>
-      <div class="col-auto d-flex flex-wrap gap-1">
+      <div class="col-auto d-flex align-items-end">
         <button type="button" class="btn btn-dark btn-sm" id="btn-ultimos7-aplicar">Aplicar</button>
-        <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-ultimos7-excel" disabled>Excel</button>
       </div>
     </div>
     <div class="small text-danger mb-2 d-none" id="ultimos7-fecha-error" role="alert"></div>
 
-    <div class="table-responsive border rounded-4">
+    <div class="table-responsive border rounded-4" id="wrap-tabla-diario">
       <table class="table table-hover align-middle mb-0" id="tabla-ultimos7">
         <thead class="table-light">
           <tr>
             <th>Fecha</th>
+            <th class="text-end">Enviados</th>
+            <th class="text-end">Prom. RefUtil</th>
+            <th class="text-end">Prom. RefUtil Bloq</th>
+            <th class="text-end">OK</th>
+            <th class="text-end">Mal</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td colspan="6" class="text-center py-4 text-body-secondary">Cargando…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="table-responsive border rounded-4 d-none" id="wrap-tabla-mensual">
+      <table class="table table-hover align-middle mb-0" id="tabla-mensual">
+        <thead class="table-light">
+          <tr>
+            <th>Mes</th>
             <th class="text-end">Enviados</th>
             <th class="text-end">Prom. RefUtil</th>
             <th class="text-end">Prom. RefUtil Bloq</th>
@@ -101,13 +127,32 @@
 (function () {
    const BASE = window.BASE_PATH || "";
 
+  const MESES_LARGOS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+  /** fecha = primer día del mes (YYYY-MM-DD desde API). */
+  function formatMesEspañolLargo(fechaRaw) {
+    const s = (fechaRaw || '').toString().slice(0, 10);
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if (!m) return s;
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    if (mo < 1 || mo > 12) return s;
+    return `${MESES_LARGOS[mo - 1]} ${y}`;
+  }
+
   const $tableBody = document.querySelector('#tabla-ultimos7 tbody');
+  const $tableBodyMensual = document.querySelector('#tabla-mensual tbody');
   const $btns = document.querySelectorAll('[data-motivo]');
+  const $btnsVista = document.querySelectorAll('[data-vista]');
   const $desde = document.getElementById('fecha-desde');
   const $hasta = document.getElementById('fecha-hasta');
   const $btnAplicar = document.getElementById('btn-ultimos7-aplicar');
   const $btnExcel = document.getElementById('btn-ultimos7-excel');
   const $err = document.getElementById('ultimos7-fecha-error');
+  const $rowFiltrosDiario = document.getElementById('row-filtros-diario');
+  const $wrapTablaDiario = document.getElementById('wrap-tabla-diario');
+  const $wrapTablaMensual = document.getElementById('wrap-tabla-mensual');
+  const $lblSubtituloVista = document.getElementById('lbl-subtitulo-vista');
 
   // --- Config ---
   const ENABLE_HEATMAP = false;    // dejalo en false por ahora (texto plano)
@@ -116,10 +161,24 @@
   const lblDiasChart = document.getElementById('lbl-dias-chart');
   const lblDiasChartSuffix = document.getElementById('lbl-dias-chart-suffix');
 
+  let viewMode = 'diario';
   let lastRows = [];
+  let lastRowsMensual = [];
   let lastMotivo = 'total';
   let lastDesde = '';
   let lastHasta = '';
+
+  function setVistaActive(target) {
+    $btnsVista.forEach(b => b.classList.toggle('active', b === target));
+  }
+
+  function applyViewLayout() {
+    const diario = viewMode === 'diario';
+    if ($lblSubtituloVista) $lblSubtituloVista.textContent = diario ? 'por día' : 'por mes';
+    $rowFiltrosDiario?.classList.toggle('d-none', !diario);
+    $wrapTablaDiario?.classList.toggle('d-none', !diario);
+    $wrapTablaMensual?.classList.toggle('d-none', diario);
+  }
 
   function toLocalISODate(d) {
     const y = d.getFullYear();
@@ -167,6 +226,13 @@
     if (lblDiasChartSuffix) lblDiasChartSuffix.textContent = n === 1 ? 'día' : 'días';
   }
 
+  function updateChartLabelsMensual(count) {
+    const n = Math.max(0, Number(count) || 0);
+    if (lblDias) lblDias.textContent = String(n);
+    if (lblDiasChart) lblDiasChart.textContent = String(n);
+    if (lblDiasChartSuffix) lblDiasChartSuffix.textContent = n === 1 ? 'mes' : 'meses';
+  }
+
   // --- Utilidades ---
   function setActive(target) { $btns.forEach(b => b.classList.toggle('active', b === target)); }
   function formatNum(n) { return Number(n || 0).toLocaleString('es-AR'); }
@@ -189,13 +255,17 @@
   const ctx = document.getElementById('mensajeriaChart')?.getContext('2d');
   let chart = null;
 
-  function buildChart(rows) {
+  /**
+   * @param {object[]} rows filas API (diario o mensual; misma forma numérica)
+   * @param {boolean} monthly si true, eje X = mes en español (Febrero 2026, …)
+   */
+  function buildChart(rows, monthly = false) {
     if (!ctx) return;
 
-    // ordenar ascendente por fecha para la serie temporal
     const dataAsc = [...rows].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
 
-    const labels = dataAsc.map(r => (r.fecha || '').toString().slice(0, 10));
+    const labels = dataAsc.map(r =>
+      monthly ? formatMesEspañolLargo(r.fecha) : (r.fecha || '').toString().slice(0, 10));
     const enviados = dataAsc.map(r => Number(r.enviados || 0));
     const ok = dataAsc.map(r => Number(r.ok || 0));
     const mal = dataAsc.map(r => Number(r.mal || 0));
@@ -291,6 +361,11 @@
           }
         },
         scales: {
+          x: {
+            ticks: monthly
+              ? { maxRotation: 45, minRotation: 24, autoSkip: true, maxTicksLimit: 14 }
+              : {},
+          },
           y: { position: 'left', title: { display: true, text: 'Cantidad' }, beginAtZero: true },
           y1:{ position: 'right', title: { display: true, text: '%' }, beginAtZero: true, suggestedMax: 100, grid: { drawOnChartArea: false } }
         }
@@ -303,7 +378,28 @@
   }
 
   function downloadExcel() {
-    if (!lastRows.length || typeof XLSX === 'undefined') return;
+    if (typeof XLSX === 'undefined') return;
+    if (viewMode === 'mensual') {
+      if (!lastRowsMensual.length) return;
+      const sorted = [...lastRowsMensual].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+      const rows = sorted.map(r => ({
+        Mes: formatMesEspañolLargo(r.fecha),
+        Enviados: Number(r.enviados || 0),
+        'Prom. RefUtil': Number(r.prom_RefUtil || 0),
+        'Prom. RefUtil Bloq': Number(r.prom_RefUtilBloqueante || 0),
+        OK: Number(r.ok || 0),
+        Mal: Number(r.mal || 0),
+        '%Respuestas': pctOneDecimal(r.pctRespuestas),
+        '%OK': pctOneDecimal(r.pctOk),
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Mensajeria_mensual');
+      const stamp = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, `mensajeria_mensual_${lastMotivo}_${stamp}.xlsx`);
+      return;
+    }
+    if (!lastRows.length) return;
     const sorted = [...lastRows].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
     const rows = sorted.map(r => ({
       Fecha: (r.fecha || '').toString().slice(0, 10),
@@ -320,6 +416,71 @@
     XLSX.utils.book_append_sheet(wb, ws, 'Mensajeria');
     const name = `mensajeria_${lastMotivo}_${lastDesde}_${lastHasta}.xlsx`;
     XLSX.writeFile(wb, name);
+  }
+
+  async function loadMensual(motivo = 'total') {
+    hideError();
+    $btnExcel.disabled = true;
+    lastRowsMensual = [];
+    if (!$tableBodyMensual) return;
+    $tableBodyMensual.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-body-secondary">Cargando…</td></tr>';
+    try {
+      const q = new URLSearchParams({ motivo });
+      const res = await fetch(`${BASE}/api/envio-mensual?${q}`, { cache: 'no-store' });
+      const payload = await res.json();
+      if (!payload.ok) throw new Error(payload.error || `Error ${res.status}`);
+
+      const { data, avg } = payload;
+      lastMotivo = motivo;
+      lastRowsMensual = data || [];
+      $btnExcel.disabled = !lastRowsMensual.length;
+
+      if (!data?.length) {
+        $tableBodyMensual.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-body-secondary">Sin datos.</td></tr>';
+        updateChartLabelsMensual(0);
+        buildChart([], true);
+        return;
+      }
+
+      updateChartLabelsMensual(data.length);
+
+      const A = {
+        enviados: avg?.AvgEnviados ?? 0,
+        promRU:   avg?.AvgProm_RefUtil ?? 0,
+        promRUB:  avg?.AvgProm_RefUtilBloq ?? 0,
+        ok:       avg?.AvgOk ?? 0,
+        mal:      avg?.AvgMal ?? 0
+      };
+
+      $tableBodyMensual.innerHTML = data.map(r => {
+        const c1 = heatClass(r.enviados,               A.enviados);
+        const c2 = heatClass(r.prom_RefUtil,           A.promRU);
+        const c3 = heatClass(r.prom_RefUtilBloqueante, A.promRUB);
+        const c4 = heatClass(r.ok,                     A.ok);
+        const c5 = heatClass(r.mal,                    A.mal);
+        const mesLabel = formatMesEspañolLargo(r.fecha);
+        return `
+          <tr>
+            <td>${mesLabel}</td>
+            <td class="text-end ${c1}">${formatNum(r.enviados)}</td>
+            <td class="text-end ${c2}">${formatNum(r.prom_RefUtil)}</td>
+            <td class="text-end ${c3}">${formatNum(r.prom_RefUtilBloqueante)}</td>
+            <td class="text-end ${c4}">${formatNum(r.ok)}</td>
+            <td class="text-end ${c5}">${formatNum(r.mal)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      buildChart(data, true);
+    } catch (err) {
+      console.error(err);
+      showError(err.message || 'Error al cargar datos mensuales.');
+      $tableBodyMensual.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-danger">Error al cargar datos.</td></tr>';
+      $btnExcel.disabled = true;
+      lastRowsMensual = [];
+      updateChartLabelsMensual(0);
+      buildChart([], true);
+    }
   }
 
   // --- Carga tabla + gráfico (misma fuente de datos /api/ultimos7) ---
@@ -409,10 +570,31 @@
     }
   }
 
-  $btns.forEach(btn => btn.addEventListener('click', () => { setActive(btn); load(btn.dataset.motivo); }));
-  $btnAplicar?.addEventListener('click', () => load(getActiveMotivo()));
+  $btns.forEach(btn => btn.addEventListener('click', () => {
+    setActive(btn);
+    if (viewMode === 'mensual') loadMensual(btn.dataset.motivo);
+    else load(btn.dataset.motivo);
+  }));
+
+  $btnsVista.forEach(btn => btn.addEventListener('click', () => {
+    const v = btn.dataset.vista;
+    if (!v || v === viewMode) return;
+    viewMode = v;
+    setVistaActive(btn);
+    applyViewLayout();
+    hideError();
+    if (viewMode === 'mensual') {
+      $btnExcel.disabled = true;
+      loadMensual(getActiveMotivo());
+    } else {
+      load(getActiveMotivo());
+    }
+  }));
+
+  $btnAplicar?.addEventListener('click', () => { if (viewMode === 'diario') load(getActiveMotivo()); });
   $btnExcel?.addEventListener('click', downloadExcel);
 
+  applyViewLayout();
   setDefaultDateRange();
   load('total');
 })();

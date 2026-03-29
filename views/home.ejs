@@ -272,6 +272,20 @@
     const pctRespuestas = dataAsc.map(r => Number(r.pctRespuestas || 0));
     const pctOk = dataAsc.map(r => Number(r.pctOk || 0));
 
+    const barTopRadius = 6;
+    /** Redondeo superior solo en el tramo que cierra la pila ok+mal (misma idea que cierres.ejs). */
+    function mensajeriaStackedBarTopRadius(ctx) {
+      const i = ctx.dataIndex;
+      const okVal = Number(ok[i] || 0);
+      const malVal = Number(mal[i] || 0);
+      const label = ctx.dataset.label;
+      const r = barTopRadius;
+      const top = { topLeft: r, topRight: r, bottomLeft: 0, bottomRight: 0 };
+      if (label === 'mal' && malVal > 0) return top;
+      if (label === 'ok' && malVal <= 0 && okVal > 0) return top;
+      return 0;
+    }
+
     if (chart) chart.destroy();
 
     chart = new Chart(ctx, {
@@ -302,6 +316,7 @@
     backgroundColor: '#198754',  // verde
     borderColor: '#198754',
     borderWidth: 0,
+    borderRadius: mensajeriaStackedBarTopRadius,
     order: 2
   },
   {
@@ -313,6 +328,7 @@
     backgroundColor: '#dc3545',  // rojo
     borderColor: '#dc3545',
     borderWidth: 0,
+    borderRadius: mensajeriaStackedBarTopRadius,
     order: 2
   },
   // Líneas de % - eje derecho

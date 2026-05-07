@@ -1,0 +1,13 @@
+site_name: Dashboard Documentation
+
+theme:
+  name: material
+
+nav:
+  - Home: README.md
+  - Overview: overview.md
+  - Architecture: architecture.md
+  - Views: views.md
+  - API Integration: api-integration.md
+  - Data Flow: data-flow.md
+  - Maintenance: maintenance.md
